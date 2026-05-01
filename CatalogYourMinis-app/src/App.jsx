@@ -270,20 +270,27 @@ function Modal({ open, title, children, onClose, isMobile }) {
           ...ui.panel,
           width: "100%",
           maxWidth: isMobile ? "100%" : 760,
-          maxHeight: isMobile ? "100vh" : "90vh",
-          minHeight: isMobile ? "100vh" : "auto",
-          overflow: "auto",
+          height: isMobile ? "100dvh" : "auto",
+          maxHeight: isMobile ? "100dvh" : "90vh",
+          minHeight: isMobile ? "100dvh" : "auto",
+          overflow: "hidden",
           borderRadius: isMobile ? 0 : 4,
-          padding: isMobile ? 16 : 14,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16, alignItems: "center" }}>
-          <div style={{ fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em", fontSize: isMobile ? 16 : 18 }}>
-            {title}
+        <div style={{ padding: isMobile ? 16 : 14, borderBottom: "1px solid rgba(167,188,126,0.12)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+            <div style={{ fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em", fontSize: isMobile ? 16 : 18 }}>
+              {title}
+            </div>
+            <button type="button" onClick={onClose} style={ui.btnAlt}>Close</button>
           </div>
-          <button type="button" onClick={onClose} style={ui.btnAlt}>Close</button>
         </div>
-        {children}
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 14, paddingBottom: isMobile ? 24 : 14 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
