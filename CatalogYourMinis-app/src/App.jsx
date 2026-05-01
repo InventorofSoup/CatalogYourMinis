@@ -175,12 +175,12 @@ const ui = {
     color: "#d3dcc7",
     fontFamily: "Arial, Helvetica, sans-serif",
   },
-  wrap: { maxWidth: 1280, margin: "0 auto", padding: 24 },
+  wrap: { maxWidth: 1280, margin: "0 auto", padding: 16 },
   panel: {
     background: "linear-gradient(180deg, rgba(16,18,14,0.98) 0%, rgba(11,12,10,0.98) 100%)",
     border: "1px solid rgba(167,188,126,0.18)",
     borderRadius: 4,
-    padding: 16,
+    padding: 14,
   },
   input: {
     width: "100%",
@@ -190,6 +190,7 @@ const ui = {
     border: "1px solid rgba(167,188,126,0.18)",
     background: "#0a0d09",
     color: "#e7f0d9",
+    minHeight: 42,
   },
   btn: {
     padding: "10px 14px",
@@ -201,6 +202,7 @@ const ui = {
     letterSpacing: "0.08em",
     fontWeight: 700,
     cursor: "pointer",
+    minHeight: 42,
   },
   btnAlt: {
     padding: "10px 14px",
@@ -212,6 +214,7 @@ const ui = {
     letterSpacing: "0.08em",
     fontWeight: 700,
     cursor: "pointer",
+    minHeight: 42,
   },
   badge: {
     display: "inline-block",
@@ -226,7 +229,26 @@ const ui = {
   },
 };
 
-function Modal({ open, title, children, onClose }) {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 900;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    function onResize() {
+      setIsMobile(window.innerWidth < 900);
+    }
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return isMobile;
+}
+
+function Modal({ open, title, children, onClose, isMobile }) {
   if (!open) return null;
   return (
     <div
@@ -236,18 +258,27 @@ function Modal({ open, title, children, onClose }) {
         inset: 0,
         background: "rgba(0,0,0,0.78)",
         display: "flex",
-        alignItems: "center",
+        alignItems: isMobile ? "stretch" : "center",
         justifyContent: "center",
-        padding: 16,
+        padding: isMobile ? 0 : 16,
         zIndex: 50,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ ...ui.panel, width: "100%", maxWidth: 760, maxHeight: "90vh", overflow: "auto" }}
+        style={{
+          ...ui.panel,
+          width: "100%",
+          maxWidth: isMobile ? "100%" : 760,
+          maxHeight: isMobile ? "100vh" : "90vh",
+          minHeight: isMobile ? "100vh" : "auto",
+          overflow: "auto",
+          borderRadius: isMobile ? 0 : 4,
+          padding: isMobile ? 16 : 14,
+        }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16, alignItems: "center" }}>
+          <div style={{ fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em", fontSize: isMobile ? 16 : 18 }}>
             {title}
           </div>
           <button type="button" onClick={onClose} style={ui.btnAlt}>Close</button>
@@ -272,6 +303,7 @@ function MiniatureCatalogApp() {
   const [error, setError] = useState("");
   const [exportModal, setExportModal] = useState(false);
   const [exportText, setExportText] = useState("");
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const loaded = loadData();
@@ -477,15 +509,15 @@ function MiniatureCatalogApp() {
 
   return (
     <div style={ui.page}>
-      <div style={ui.wrap}>
+      <div style={{ ...ui.wrap, padding: isMobile ? 12 : 24 }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ color: "#ffd27a", fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>
+          <div style={{ color: "#ffd27a", fontSize: isMobile ? 10 : 12, letterSpacing: "0.18em", textTransform: "uppercase" }}>
             Tactical Archive Node
           </div>
-          <div style={{ fontSize: 34, fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+          <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: 1.1 }}>
             Miniature Catalog
           </div>
-          <div style={{ color: "#8d947d", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          <div style={{ color: "#8d947d", fontSize: isMobile ? 11 : 13, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 6 }}>
             Index and classify model assets by game channel
           </div>
         </div>
@@ -500,17 +532,17 @@ function MiniatureCatalogApp() {
 
         {error ? <div style={{ ...ui.panel, marginBottom: 16, color: "#ffd27a" }}>{error}</div> : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
-          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Games</div><div style={{ fontSize: 30, fontWeight: 800, color: "#eff7df" }}>{data.games.length}</div></div>
-          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Miniatures</div><div style={{ fontSize: 30, fontWeight: 800, color: "#eff7df" }}>{data.miniatures.length}</div></div>
-          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Selected Game</div><div style={{ fontSize: 22, fontWeight: 800, color: "#eff7df", textTransform: "uppercase" }}>{selectedGame?.name || "None"}</div></div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 }}>
+          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Games</div><div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 800, color: "#eff7df" }}>{data.games.length}</div></div>
+          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Miniatures</div><div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 800, color: "#eff7df" }}>{data.miniatures.length}</div></div>
+          <div style={ui.panel}><div style={{ color: "#8d947d", fontSize: 11, textTransform: "uppercase" }}>Selected Game</div><div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: "#eff7df", textTransform: "uppercase", lineHeight: 1.2 }}>{selectedGame?.name || "None"}</div></div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "320px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
           <div style={ui.panel}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-              <div style={{ fontWeight: 800, color: "#cdddab", textTransform: "uppercase", letterSpacing: "0.14em" }}>Games</div>
-              <button type="button" style={ui.btn} onClick={() => setGameModal(true)}>Add Game</button>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 800, color: "#cdddab", textTransform: "uppercase", letterSpacing: "0.14em", fontSize: isMobile ? 14 : 16 }}>Games</div>
+              <button type="button" style={{ ...ui.btn, width: isMobile ? "100%" : "auto" }} onClick={() => setGameModal(true)}>Add Game</button>
             </div>
             <div style={{ display: "grid", gap: 12 }}>
               {data.games.length === 0 ? <div style={{ color: "#8d947d", textTransform: "uppercase", fontSize: 12 }}>No games yet.</div> : null}
@@ -519,11 +551,11 @@ function MiniatureCatalogApp() {
                 return (
                   <div key={game.id} style={{ border: active ? "1px solid rgba(255,176,0,0.42)" : "1px solid rgba(167,188,126,0.14)", padding: 12, borderRadius: 4, background: active ? "rgba(39,34,18,0.92)" : "rgba(12,13,10,0.86)" }}>
                     <button type="button" onClick={() => setSelectedGameId(game.id)} style={{ width: "100%", background: "transparent", border: "none", color: "inherit", textAlign: "left", padding: 0, cursor: "pointer" }}>
-                      <div style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{game.name}</div>
+                      <div style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", lineHeight: 1.2 }}>{game.name}</div>
                       <div style={{ color: active ? "#ffd27a" : "#8d947d", fontSize: 12, marginTop: 6, textTransform: "uppercase" }}>{counts[game.id] || 0} total models</div>
                     </button>
                     <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-                      <button type="button" style={ui.btnAlt} onClick={() => deleteGame(game.id)}>Delete</button>
+                      <button type="button" style={{ ...ui.btnAlt, width: isMobile ? "100%" : "auto" }} onClick={() => deleteGame(game.id)}>Delete</button>
                     </div>
                   </div>
                 );
@@ -531,33 +563,33 @@ function MiniatureCatalogApp() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 20 }}>
+          <div style={{ display: "grid", gap: 16 }}>
             <div style={ui.panel}>
               <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search miniatures" style={{ ...ui.input, flex: 1, minWidth: 220 }} />
-                  <button type="button" style={{ ...ui.btn, opacity: data.games.length ? 1 : 0.6 }} disabled={!data.games.length} onClick={openNewMini}>Add Miniature</button>
-                  <button type="button" style={ui.btnAlt} onClick={exportToExcel}>Export To Excel</button>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) auto auto", gap: 12 }}>
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search miniatures" style={{ ...ui.input, flex: 1, minWidth: 0 }} />
+                  <button type="button" style={{ ...ui.btn, opacity: data.games.length ? 1 : 0.6, width: "100%" }} disabled={!data.games.length} onClick={openNewMini}>Add Miniature</button>
+                  <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={exportToExcel}>Export To Excel</button>
                 </div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ ...ui.input, maxWidth: 320 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,320px) auto", gap: 12 }}>
+                  <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ ...ui.input, maxWidth: "100%" }}>
                     <option value={ALL_TAGS}>All tags</option>
                     {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
                   </select>
-                  {tagFilter !== ALL_TAGS ? <button type="button" style={ui.btnAlt} onClick={() => setTagFilter(ALL_TAGS)}>Clear Tag Filter</button> : null}
+                  {tagFilter !== ALL_TAGS ? <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={() => setTagFilter(ALL_TAGS)}>Clear Tag Filter</button> : null}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               {filtered.length === 0 ? <div style={{ ...ui.panel, color: "#8d947d", textTransform: "uppercase", fontSize: 12 }}>No miniatures match the current filter.</div> : null}
               {filtered.map((mini) => {
                 const game = data.games.find((g) => g.id === mini.gameId);
                 const tags = tagsFor(mini);
                 return (
-                  <button key={mini.id} type="button" onClick={() => setDetailId(mini.id)} style={{ ...ui.panel, textAlign: "left", cursor: "pointer" }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.08em" }}>{mini.name}</div>
-                    <div style={{ color: "#8d947d", fontSize: 12, marginTop: 6, textTransform: "uppercase" }}>{game?.name || "Unknown game"}</div>
+                  <button key={mini.id} type="button" onClick={() => setDetailId(mini.id)} style={{ ...ui.panel, textAlign: "left", cursor: "pointer", padding: isMobile ? 12 : 14 }}>
+                    <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: "#eff7df", textTransform: "uppercase", letterSpacing: "0.08em", lineHeight: 1.15 }}>{mini.name}</div>
+                    <div style={{ color: "#8d947d", fontSize: 12, marginTop: 6, textTransform: "uppercase", lineHeight: 1.2 }}>{game?.name || "Unknown game"}</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                       {tags.map((tag) => <span key={tag} style={{ ...ui.badge, color: tagFilter === tag ? "#ffd27a" : "#b6c89a" }}>{tag}</span>)}
                     </div>
@@ -569,7 +601,7 @@ function MiniatureCatalogApp() {
           </div>
         </div>
 
-        <Modal open={!!detailMini} title={detailMini?.name || "Miniature"} onClose={() => setDetailId("")}>
+        <Modal open={!!detailMini} title={detailMini?.name || "Miniature"} onClose={() => setDetailId("")} isMobile={isMobile}>
           {detailMini ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div style={{ aspectRatio: "4 / 3", background: "#11140f", border: "1px solid rgba(167,188,126,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -588,40 +620,40 @@ function MiniatureCatalogApp() {
                 {detailMini.notes ? <div><strong style={{ color: "#f0f4e7" }}>Notes:</strong> {detailMini.notes}</div> : null}
                 {!detailMini.material && !detailMini.notes ? <div style={{ color: "#8d947d" }}>No additional details saved.</div> : null}
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <button type="button" style={ui.btnAlt} onClick={() => openEditMini(detailMini)}>Edit</button>
-                <button type="button" style={ui.btnAlt} onClick={() => deleteMini(detailMini.id)}>Delete</button>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
+                <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={() => openEditMini(detailMini)}>Edit</button>
+                <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={() => deleteMini(detailMini.id)}>Delete</button>
               </div>
             </div>
           ) : null}
         </Modal>
 
-        <Modal open={gameModal} title="Create Game" onClose={() => setGameModal(false)}>
+        <Modal open={gameModal} title="Create Game" onClose={() => setGameModal(false)} isMobile={isMobile}>
           <div style={{ display: "grid", gap: 14 }}>
             <input value={gameName} onChange={(e) => setGameName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addGame()} placeholder="Warhammer 40,000" style={ui.input} />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" style={ui.btnAlt} onClick={() => setGameModal(false)}>Cancel</button>
-              <button type="button" style={ui.btn} onClick={addGame}>Save Game</button>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
+              <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={() => setGameModal(false)}>Cancel</button>
+              <button type="button" style={{ ...ui.btn, width: "100%" }} onClick={addGame}>Save Game</button>
             </div>
           </div>
         </Modal>
 
-        <Modal open={exportModal} title="Export Data" onClose={() => setExportModal(false)}>
+        <Modal open={exportModal} title="Export Data" onClose={() => setExportModal(false)} isMobile={isMobile}>
           <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ color: "#8d947d", fontSize: 12, textTransform: "uppercase" }}>
+            <div style={{ color: "#8d947d", fontSize: 12, textTransform: "uppercase", lineHeight: 1.4 }}>
               If preview blocks downloads, copy this CSV text into a .csv file and open it in Excel.
             </div>
-            <textarea value={exportText} readOnly rows={14} style={{ ...ui.input, resize: "vertical", minHeight: 260 }} />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" style={ui.btnAlt} onClick={copyExportText}>Copy CSV</button>
-              <button type="button" style={ui.btn} onClick={() => setExportModal(false)}>Done</button>
+            <textarea value={exportText} readOnly rows={14} style={{ ...ui.input, resize: "vertical", minHeight: isMobile ? 220 : 260 }} />
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
+              <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={copyExportText}>Copy CSV</button>
+              <button type="button" style={{ ...ui.btn, width: "100%" }} onClick={() => setExportModal(false)}>Done</button>
             </div>
           </div>
         </Modal>
 
-        <Modal open={miniModal} title={editingId ? "Edit Miniature" : "Add Miniature"} onClose={closeMiniModal}>
+        <Modal open={miniModal} title={editingId ? "Edit Miniature" : "Add Miniature"} onClose={closeMiniModal} isMobile={isMobile}>
           <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
               <select value={form.gameId} onChange={(e) => setForm((c) => ({ ...c, gameId: e.target.value }))} style={ui.input}>
                 <option value="">Select a game</option>
                 {data.games.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}
@@ -635,13 +667,13 @@ function MiniatureCatalogApp() {
               </select>
             </div>
             <div style={{ ...ui.panel, padding: 14 }}>
-              <input type="file" accept="image/*" onChange={changeImage} style={{ color: "#d3dcc7" }} />
+              <input type="file" accept="image/*" onChange={changeImage} style={{ color: "#d3dcc7", width: "100%" }} />
               {form.image ? <img src={form.image} alt="Miniature preview" style={{ marginTop: 12, width: "100%", maxHeight: 240, objectFit: "cover" }} /> : null}
             </div>
             <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Notes" rows={5} style={{ ...ui.input, resize: "vertical" }} />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" style={ui.btnAlt} onClick={closeMiniModal}>Cancel</button>
-              <button type="button" style={ui.btn} onClick={saveMini}>Save Miniature</button>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
+              <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={closeMiniModal}>Cancel</button>
+              <button type="button" style={{ ...ui.btn, width: "100%" }} onClick={saveMini}>Save Miniature</button>
             </div>
           </div>
         </Modal>
