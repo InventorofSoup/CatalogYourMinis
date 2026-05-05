@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "miniature-catalog-app-v2";
+const LEGACY_STORAGE_KEYS = ["miniature-catalog-app-v1", "miniature-catalog-app"];
 const DEFAULT_STATUS = "Unpainted";
 const STATUS_OPTIONS = ["Unbuilt", "Assembled", "Primed", "Painted", "Finished"];
 const ALL_TAGS = "__all__";
@@ -80,8 +81,22 @@ function sanitize(raw) {
 function loadData() {
   if (typeof window === "undefined") return { games: [], miniatures: [] };
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? sanitize(JSON.parse(raw)) : { games: [], miniatures: [] };
+    const currentRaw = window.localStorage.getItem(STORAGE_KEY);
+    if (currentRaw) {
+      return sanitize(JSON.parse(currentRaw));
+    }
+
+    for (const legacyKey of LEGACY_STORAGE_KEYS) {
+      const legacyRaw = window.localStorage.getItem(legacyKey);
+      if (!legacyRaw) continue;
+      const migrated = sanitize(JSON.parse(legacyRaw));
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      } catch {}
+      return migrated;
+    }
+
+    return { games: [], miniatures: [] };
   } catch {
     return { games: [], miniatures: [] };
   }
@@ -182,6 +197,15 @@ function runTests() {
 
   test("emptyForm defaults image to empty string", () => {
     assert(emptyForm("g1").image === "", "new forms should start without an image");
+  });
+
+  test("sanitize keeps valid legacy data", () => {
+    const data = sanitize({
+      games: [{ id: "g1", name: "Legacy Game" }],
+      miniatures: [{ id: "m1", gameId: "g1", name: "Legacy Mini", status: "Painted" }],
+    });
+    assert(data.games.length === 1, "legacy game should remain");
+    assert(data.miniatures.length === 1, "legacy miniature should remain");
   });
 
   return results;
