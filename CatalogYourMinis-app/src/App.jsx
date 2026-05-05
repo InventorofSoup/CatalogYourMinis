@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "miniature-catalog-app-v2";
 const DEFAULT_STATUS = "Unpainted";
-const STATUS_OPTIONS = ["Unpainted", "Assembled", "Primed", "Painted", "WIP"];
+const STATUS_OPTIONS = ["Unbuilt", "Assembled", "Primed", "Painted", "Finished"];
 const ALL_TAGS = "__all__";
 
 function uid() {
@@ -93,10 +93,27 @@ function saveData(data) {
   }
 }
 
-function fileToDataUrl(file) {
+function compressImage(file, maxWidth = 1400, quality = 0.78) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Image processing is unavailable."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => reject(new Error("Failed to load image."));
+      img.src = typeof reader.result === "string" ? reader.result : "";
+    };
     reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsDataURL(file);
   });
@@ -161,6 +178,10 @@ function runTests() {
 
   test("buildCsv joins rows with newlines", () => {
     assert(buildCsv([["a", "b"], ["c", "d"]]) === '"a","b"\n"c","d"', "csv rows should be newline-separated");
+  });
+
+  test("emptyForm defaults image to empty string", () => {
+    assert(emptyForm("g1").image === "", "new forms should start without an image");
   });
 
   return results;
@@ -310,6 +331,7 @@ function MiniatureCatalogApp() {
   const [error, setError] = useState("");
   const [exportModal, setExportModal] = useState(false);
   const [exportText, setExportText] = useState("");
+  const [isSavingImage, setIsSavingImage] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -319,7 +341,11 @@ function MiniatureCatalogApp() {
   }, []);
 
   useEffect(() => {
-    saveData(data);
+    try {
+      saveData(data);
+    } catch {
+      setError("Save failed. The image may be too large for browser storage. Try a smaller image.");
+    }
   }, [data]);
 
   useEffect(() => {
@@ -402,6 +428,7 @@ function MiniatureCatalogApp() {
     setMiniModal(false);
     setEditingId("");
     setForm(emptyForm(selectedGameId || data.games[0]?.id || ""));
+    setIsSavingImage(false);
   }
 
   function addGame() {
@@ -432,10 +459,14 @@ function MiniatureCatalogApp() {
     event.target.value = "";
     if (!file) return;
     try {
-      const image = await fileToDataUrl(file);
+      setIsSavingImage(true);
+      setError("");
+      const image = await compressImage(file);
       setForm((current) => ({ ...current, image }));
     } catch {
-      setError("Image could not be loaded.");
+      setError("Image could not be loaded. Try a smaller photo.");
+    } finally {
+      setIsSavingImage(false);
     }
   }
 
@@ -461,14 +492,18 @@ function MiniatureCatalogApp() {
       notes: text(form.notes),
       image: typeof form.image === "string" ? form.image : "",
     };
-    setData((current) => ({
-      ...current,
-      miniatures: editingId
-        ? current.miniatures.map((m) => (m.id === editingId ? payload : m))
-        : [...current.miniatures, payload],
-    }));
-    setError("");
-    closeMiniModal();
+    try {
+      setData((current) => ({
+        ...current,
+        miniatures: editingId
+          ? current.miniatures.map((m) => (m.id === editingId ? payload : m))
+          : [...current.miniatures, payload],
+      }));
+      setError("");
+      closeMiniModal();
+    } catch {
+      setError("Save failed. The image may be too large for browser storage. Try a smaller image.");
+    }
   }
 
   function deleteMini(id) {
@@ -675,12 +710,13 @@ function MiniatureCatalogApp() {
             </div>
             <div style={{ ...ui.panel, padding: 14 }}>
               <input type="file" accept="image/*" onChange={changeImage} style={{ color: "#d3dcc7", width: "100%" }} />
+              {isSavingImage ? <div style={{ color: "#8d947d", fontSize: 12, marginTop: 10, textTransform: "uppercase" }}>Processing image...</div> : null}
               {form.image ? <img src={form.image} alt="Miniature preview" style={{ marginTop: 12, width: "100%", maxHeight: 240, objectFit: "cover" }} /> : null}
             </div>
             <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Notes" rows={5} style={{ ...ui.input, resize: "vertical" }} />
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
               <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={closeMiniModal}>Cancel</button>
-              <button type="button" style={{ ...ui.btn, width: "100%" }} onClick={saveMini}>Save Miniature</button>
+              <button type="button" style={{ ...ui.btn, width: "100%", opacity: isSavingImage ? 0.6 : 1 }} onClick={saveMini} disabled={isSavingImage}>Save Miniature</button>
             </div>
           </div>
         </Modal>
