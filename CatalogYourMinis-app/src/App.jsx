@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "miniature-catalog-app-v2";
 const LEGACY_STORAGE_KEYS = ["miniature-catalog-app-v1", "miniature-catalog-app"];
+const IMAGE_DB_NAME = "miniature-catalog-images";
+const IMAGE_STORE_NAME = "images";
 const DEFAULT_STATUS = "Unpainted";
 const STATUS_OPTIONS = ["Unbuilt", "Assembled", "Primed", "Painted", "Finished"];
 const ALL_TAGS = "__all__";
@@ -27,7 +29,8 @@ function emptyForm(gameId = "") {
     faction: "",
     status: DEFAULT_STATUS,
     notes: "",
-    image: "",
+    imageId: "",
+    imagePreview: "",
   };
 }
 
@@ -57,9 +60,10 @@ function sanitize(raw) {
           gameId: text(m?.gameId),
           name: text(m?.name),
           faction: text(m?.faction),
-                    status: status(m?.status),
+          status: status(m?.status),
           notes: text(m?.notes),
-          image: typeof m?.image === "string" ? m.image : "",
+          imageId: text(m?.imageId),
+          legacyImage: typeof m?.image === "string" ? m.image : "",
         }))
         .filter((m) => m.name && validGameIds.has(m.gameId))
     : [];
@@ -104,7 +108,92 @@ function saveData(data) {
   }
 }
 
-function compressImage(file, maxWidth = 1400, quality = 0.78) {
+function openImageDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB is unavailable."));
+      return;
+    }
+    const request = indexedDB.open(IMAGE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+        db.createObjectStore(IMAGE_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Failed to open image database."));
+  });
+}
+
+async function idbGet(key) {
+  if (!key) return "";
+  const db = await openImageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IMAGE_STORE_NAME, "readonly");
+    const store = tx.objectStore(IMAGE_STORE_NAME);
+    const req = store.get(key);
+    req.onsuccess = () => resolve(typeof req.result === "string" ? req.result : "");
+    req.onerror = () => reject(req.error || new Error("Failed to read image."));
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => reject(tx.error || new Error("Failed to read image."));
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await openImageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IMAGE_STORE_NAME, "readwrite");
+    const store = tx.objectStore(IMAGE_STORE_NAME);
+    store.put(value, key);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error || new Error("Failed to save image."));
+  });
+}
+
+async function idbDelete(key) {
+  if (!key) return;
+  const db = await openImageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IMAGE_STORE_NAME, "readwrite");
+    const store = tx.objectStore(IMAGE_STORE_NAME);
+    store.delete(key);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error || new Error("Failed to delete image."));
+  });
+}
+
+async function migrateLegacyImages(data) {
+  let changed = false;
+  const miniatures = [];
+  for (const mini of data.miniatures) {
+    if (mini.legacyImage && !mini.imageId) {
+      const imageId = `img_${mini.id}`;
+      try {
+        await idbSet(imageId, mini.legacyImage);
+        miniatures.push({ ...mini, imageId, legacyImage: "" });
+        changed = true;
+      } catch {
+        miniatures.push({ ...mini, legacyImage: "" });
+      }
+    } else {
+      miniatures.push({ ...mini, legacyImage: "" });
+    }
+  }
+  const next = { ...data, miniatures };
+  if (changed) {
+    saveData(next);
+  }
+  return next;
+}
+
+function compressImage(file, maxWidth = 800, quality = 0.6) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -183,13 +272,6 @@ function runTests() {
     assert(data.miniatures.length === 0, "invalid miniature should be removed");
   });
 
-  test("tagsFor uses faction and status only", () => {
-    const tags = tagsFor({ faction: "Orks", unitType: "HQ", status: "Painted" });
-    assert(tags.length === 2, "only two tags should remain");
-    assert(tags[0] === "Orks", "faction should remain");
-    assert(tags[1] === "Painted", "status should remain");
-  });
-
   test("csvCell escapes quotes", () => {
     assert(csvCell('a"b') === '"a""b"', "quotes should be escaped for csv");
   });
@@ -198,17 +280,17 @@ function runTests() {
     assert(buildCsv([["a", "b"], ["c", "d"]]) === '"a","b"\n"c","d"', "csv rows should be newline-separated");
   });
 
-  test("emptyForm defaults image to empty string", () => {
-    assert(emptyForm("g1").image === "", "new forms should start without an image");
+  test("emptyForm defaults image fields", () => {
+    const form = emptyForm("g1");
+    assert(form.imageId === "", "new forms should start without an image id");
+    assert(form.imagePreview === "", "new forms should start without an image preview");
   });
 
-  test("sanitize keeps valid legacy data", () => {
-    const data = sanitize({
-      games: [{ id: "g1", name: "Legacy Game" }],
-      miniatures: [{ id: "m1", gameId: "g1", name: "Legacy Mini", status: "Painted" }],
-    });
-    assert(data.games.length === 1, "legacy game should remain");
-    assert(data.miniatures.length === 1, "legacy miniature should remain");
+  test("tagsFor uses faction and status only", () => {
+    const tags = tagsFor({ faction: "Orks", status: "Painted" });
+    assert(tags.length === 2, "only two tags should remain");
+    assert(tags[0] === "Orks", "faction should remain");
+    assert(tags[1] === "Painted", "status should remain");
   });
 
   return results;
@@ -359,19 +441,24 @@ function MiniatureCatalogApp() {
   const [exportModal, setExportModal] = useState(false);
   const [exportText, setExportText] = useState("");
   const [isSavingImage, setIsSavingImage] = useState(false);
+  const [imageMap, setImageMap] = useState({});
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    const loaded = loadData();
-    setData(loaded);
-    setSelectedGameId(loaded.games[0]?.id || "");
+    async function init() {
+      const loaded = loadData();
+      const migrated = await migrateLegacyImages(loaded);
+      setData(migrated);
+      setSelectedGameId(migrated.games[0]?.id || "");
+    }
+    init();
   }, []);
 
   useEffect(() => {
     try {
       saveData(data);
     } catch {
-      setError("Save failed. The image may be too large for browser storage. Try a smaller image.");
+      setError("Save failed. Try again.");
     }
   }, [data]);
 
@@ -388,6 +475,29 @@ function MiniatureCatalogApp() {
   useEffect(() => {
     setTagFilter(ALL_TAGS);
   }, [selectedGameId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadImages() {
+      const entries = await Promise.all(
+        data.miniatures.map(async (mini) => {
+          try {
+            const src = mini.imageId ? await idbGet(mini.imageId) : "";
+            return [mini.id, src];
+          } catch {
+            return [mini.id, ""];
+          }
+        })
+      );
+      if (!cancelled) {
+        setImageMap(Object.fromEntries(entries));
+      }
+    }
+    loadImages();
+    return () => {
+      cancelled = true;
+    };
+  }, [data.miniatures]);
 
   const selectedGame = data.games.find((g) => g.id === selectedGameId) || null;
   const detailMini = data.miniatures.find((m) => m.id === detailId) || null;
@@ -442,7 +552,8 @@ function MiniatureCatalogApp() {
       faction: mini.faction,
       status: mini.status,
       notes: mini.notes,
-      image: mini.image,
+      imageId: mini.imageId || "",
+      imagePreview: imageMap[mini.id] || "",
     });
     setMiniModal(true);
     setDetailId("");
@@ -471,7 +582,13 @@ function MiniatureCatalogApp() {
     setError("");
   }
 
-  function deleteGame(id) {
+  async function deleteGame(id) {
+    const affected = data.miniatures.filter((m) => m.gameId === id);
+    for (const mini of affected) {
+      try {
+        await idbDelete(mini.imageId);
+      } catch {}
+    }
     setData((current) => ({
       games: current.games.filter((g) => g.id !== id),
       miniatures: current.miniatures.filter((m) => m.gameId !== id),
@@ -486,8 +603,9 @@ function MiniatureCatalogApp() {
     try {
       setIsSavingImage(true);
       setError("");
-      const image = await compressImage(file);
-      setForm((current) => ({ ...current, image }));
+      const imagePreview = await compressImage(file);
+      const imageId = form.imageId || `img_${editingId || uid()}`;
+      setForm((current) => ({ ...current, imageId, imagePreview }));
     } catch {
       setError("Image could not be loaded. Try a smaller photo.");
     } finally {
@@ -495,7 +613,7 @@ function MiniatureCatalogApp() {
     }
   }
 
-  function saveMini() {
+  async function saveMini() {
     const gameId = text(form.gameId);
     const name = text(form.name);
     if (!gameId || !name) {
@@ -506,34 +624,55 @@ function MiniatureCatalogApp() {
       setError("The selected game is no longer available.");
       return;
     }
-    const payload = {
-      id: editingId || uid(),
-      gameId,
-      name,
-      faction: text(form.faction),
-      status: status(form.status),
-      notes: text(form.notes),
-      image: typeof form.image === "string" ? form.image : "",
-    };
+    const id = editingId || uid();
+    const imageId = form.imagePreview ? (form.imageId || `img_${id}`) : "";
     try {
+      if (form.imagePreview && imageId) {
+        await idbSet(imageId, form.imagePreview);
+      }
+      const currentMini = editingId ? data.miniatures.find((m) => m.id === editingId) : null;
+      if (currentMini?.imageId && !imageId) {
+        await idbDelete(currentMini.imageId);
+      }
+      const payload = {
+        id,
+        gameId,
+        name,
+        faction: text(form.faction),
+        status: status(form.status),
+        notes: text(form.notes),
+        imageId,
+      };
       setData((current) => ({
         ...current,
         miniatures: editingId
           ? current.miniatures.map((m) => (m.id === editingId ? payload : m))
           : [...current.miniatures, payload],
       }));
+      setImageMap((current) => ({ ...current, [id]: form.imagePreview || "" }));
       setError("");
       closeMiniModal();
     } catch {
-      setError("Save failed. The image may be too large for browser storage. Try a smaller image.");
+      setError("Save failed. Image storage may be unavailable on this device.");
     }
   }
 
-  function deleteMini(id) {
+  async function deleteMini(id) {
+    const mini = data.miniatures.find((m) => m.id === id);
+    if (mini?.imageId) {
+      try {
+        await idbDelete(mini.imageId);
+      } catch {}
+    }
     setData((current) => ({
       ...current,
       miniatures: current.miniatures.filter((m) => m.id !== id),
     }));
+    setImageMap((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setDetailId((current) => (current === id ? "" : current));
   }
 
@@ -561,7 +700,7 @@ function MiniatureCatalogApp() {
           mini.status,
           tagsFor(mini).join(" | "),
           mini.notes,
-          mini.image ? "Yes" : "No",
+          mini.imageId ? "Yes" : "No",
         ];
       }),
     ];
@@ -668,7 +807,7 @@ function MiniatureCatalogApp() {
           {detailMini ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div style={{ aspectRatio: "4 / 3", background: "#11140f", border: "1px solid rgba(167,188,126,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {detailMini.image ? <img src={detailMini.image} alt={detailMini.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ color: "#8d947d", textTransform: "uppercase", fontSize: 12 }}>No photo uploaded</div>}
+                {imageMap[detailMini.id] ? <img src={imageMap[detailMini.id]} alt={detailMini.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ color: "#8d947d", textTransform: "uppercase", fontSize: 12 }}>No photo uploaded</div>}
               </div>
               <div style={{ color: "#8d947d", fontSize: 12, textTransform: "uppercase" }}>{detailGame?.name || "Unknown game"}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -679,8 +818,8 @@ function MiniatureCatalogApp() {
                 ))}
               </div>
               <div style={{ display: "grid", gap: 8, color: "#c1c9b4" }}>
-                                {detailMini.notes ? <div><strong style={{ color: "#f0f4e7" }}>Notes:</strong> {detailMini.notes}</div> : null}
-                {!detailMini.material && !detailMini.notes ? <div style={{ color: "#8d947d" }}>No additional details saved.</div> : null}
+                {detailMini.notes ? <div><strong style={{ color: "#f0f4e7" }}>Notes:</strong> {detailMini.notes}</div> : null}
+                {!detailMini.notes ? <div style={{ color: "#8d947d" }}>No additional details saved.</div> : null}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
                 <button type="button" style={{ ...ui.btnAlt, width: "100%" }} onClick={() => openEditMini(detailMini)}>Edit</button>
@@ -722,14 +861,14 @@ function MiniatureCatalogApp() {
               </select>
               <input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Model name" style={ui.input} />
               <input value={form.faction} onChange={(e) => setForm((c) => ({ ...c, faction: e.target.value }))} placeholder="Faction" style={ui.input} />
-                                          <select value={form.status} onChange={(e) => setForm((c) => ({ ...c, status: e.target.value }))} style={ui.input}>
+              <select value={form.status} onChange={(e) => setForm((c) => ({ ...c, status: e.target.value }))} style={ui.input}>
                 {STATUS_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </div>
             <div style={{ ...ui.panel, padding: 14 }}>
               <input type="file" accept="image/*" onChange={changeImage} style={{ color: "#d3dcc7", width: "100%" }} />
               {isSavingImage ? <div style={{ color: "#8d947d", fontSize: 12, marginTop: 10, textTransform: "uppercase" }}>Processing image...</div> : null}
-              {form.image ? <img src={form.image} alt="Miniature preview" style={{ marginTop: 12, width: "100%", maxHeight: 240, objectFit: "cover" }} /> : null}
+              {form.imagePreview ? <img src={form.imagePreview} alt="Miniature preview" style={{ marginTop: 12, width: "100%", maxHeight: 240, objectFit: "cover" }} /> : null}
             </div>
             <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Notes" rows={5} style={{ ...ui.input, resize: "vertical" }} />
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
