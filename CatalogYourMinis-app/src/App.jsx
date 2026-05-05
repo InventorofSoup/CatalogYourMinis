@@ -25,8 +25,6 @@ function emptyForm(gameId = "") {
     gameId,
     name: "",
     faction: "",
-    unitType: "",
-    material: "",
     status: DEFAULT_STATUS,
     notes: "",
     image: "",
@@ -34,7 +32,7 @@ function emptyForm(gameId = "") {
 }
 
 function tagsFor(mini) {
-  return [text(mini?.faction), text(mini?.unitType), status(mini?.status)].filter(Boolean);
+  return [text(mini?.faction), status(mini?.status)].filter(Boolean);
 }
 
 function sanitize(raw) {
@@ -59,9 +57,7 @@ function sanitize(raw) {
           gameId: text(m?.gameId),
           name: text(m?.name),
           faction: text(m?.faction),
-          unitType: text(m?.unitType),
-          material: text(m?.material),
-          status: status(m?.status),
+                    status: status(m?.status),
           notes: text(m?.notes),
           image: typeof m?.image === "string" ? m.image : "",
         }))
@@ -185,6 +181,13 @@ function runTests() {
     });
     assert(data.games.length === 1, "game should remain");
     assert(data.miniatures.length === 0, "invalid miniature should be removed");
+  });
+
+  test("tagsFor uses faction and status only", () => {
+    const tags = tagsFor({ faction: "Orks", unitType: "HQ", status: "Painted" });
+    assert(tags.length === 2, "only two tags should remain");
+    assert(tags[0] === "Orks", "faction should remain");
+    assert(tags[1] === "Painted", "status should remain");
   });
 
   test("csvCell escapes quotes", () => {
@@ -407,7 +410,7 @@ function MiniatureCatalogApp() {
       .filter((m) => (tagFilter === ALL_TAGS ? true : tagsFor(m).some((t) => t.toLowerCase() === tagFilter.toLowerCase())))
       .filter((m) => {
         if (!q) return true;
-        return [m.name, m.faction, m.unitType, m.material, m.status, m.notes].join(" ").toLowerCase().includes(q);
+        return [m.name, m.faction, m.status, m.notes].join(" ").toLowerCase().includes(q);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data.miniatures, selectedGameId, tagFilter, search]);
@@ -437,8 +440,6 @@ function MiniatureCatalogApp() {
       gameId: mini.gameId,
       name: mini.name,
       faction: mini.faction,
-      unitType: mini.unitType,
-      material: mini.material,
       status: mini.status,
       notes: mini.notes,
       image: mini.image,
@@ -510,8 +511,6 @@ function MiniatureCatalogApp() {
       gameId,
       name,
       faction: text(form.faction),
-      unitType: text(form.unitType),
-      material: text(form.material),
       status: status(form.status),
       notes: text(form.notes),
       image: typeof form.image === "string" ? form.image : "",
@@ -552,15 +551,13 @@ function MiniatureCatalogApp() {
 
   function exportToExcel() {
     const rows = [
-      ["Game", "Model Name", "Faction", "Unit Type", "Material", "Status", "Tags", "Notes", "Has Photo"],
+      ["Game", "Model Name", "Faction", "Status", "Tags", "Notes", "Has Photo"],
       ...data.miniatures.map((mini) => {
         const game = data.games.find((g) => g.id === mini.gameId);
         return [
           game?.name || "",
           mini.name,
           mini.faction,
-          mini.unitType,
-          mini.material,
           mini.status,
           tagsFor(mini).join(" | "),
           mini.notes,
@@ -682,8 +679,7 @@ function MiniatureCatalogApp() {
                 ))}
               </div>
               <div style={{ display: "grid", gap: 8, color: "#c1c9b4" }}>
-                {detailMini.material ? <div><strong style={{ color: "#f0f4e7" }}>Material:</strong> {detailMini.material}</div> : null}
-                {detailMini.notes ? <div><strong style={{ color: "#f0f4e7" }}>Notes:</strong> {detailMini.notes}</div> : null}
+                                {detailMini.notes ? <div><strong style={{ color: "#f0f4e7" }}>Notes:</strong> {detailMini.notes}</div> : null}
                 {!detailMini.material && !detailMini.notes ? <div style={{ color: "#8d947d" }}>No additional details saved.</div> : null}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto auto", justifyContent: isMobile ? "stretch" : "end", gap: 10 }}>
@@ -726,9 +722,7 @@ function MiniatureCatalogApp() {
               </select>
               <input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Model name" style={ui.input} />
               <input value={form.faction} onChange={(e) => setForm((c) => ({ ...c, faction: e.target.value }))} placeholder="Faction" style={ui.input} />
-              <input value={form.unitType} onChange={(e) => setForm((c) => ({ ...c, unitType: e.target.value }))} placeholder="Unit type" style={ui.input} />
-              <input value={form.material} onChange={(e) => setForm((c) => ({ ...c, material: e.target.value }))} placeholder="Material" style={ui.input} />
-              <select value={form.status} onChange={(e) => setForm((c) => ({ ...c, status: e.target.value }))} style={ui.input}>
+                                          <select value={form.status} onChange={(e) => setForm((c) => ({ ...c, status: e.target.value }))} style={ui.input}>
                 {STATUS_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </div>
